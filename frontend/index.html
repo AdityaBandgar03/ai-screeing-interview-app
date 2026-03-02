@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Interview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem 2rem;
+      background: #0f0f12;
+      color: #e4e4e7;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .step { margin-bottom: 1.5rem; }
+    .hidden { display: none !important; }
+    button {
+      font: inherit;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      border: none;
+      background: #3b82f6;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover { background: #2563eb; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error { color: #f87171; margin-top: 0.5rem; }
+    .permission-status { margin: 0.5rem 0; color: #a1a1aa; }
+    .question-row { display: flex; gap: 1rem; align-items: flex-start; margin: 1rem 0; }
+    .bounce-wrap {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .bounce-ball {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #3b82f6;
+      animation: bounce 0.6s ease-in-out infinite;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+    .question-text { flex: 1; white-space: pre-wrap; line-height: 1.5; }
+    .question-text .stream-cursor { opacity: 0.7; }
+    .recording-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      color: #f87171;
+      font-size: 0.9rem;
+    }
+    .recording-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #f87171;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .finish-block { margin-top: 1.5rem; padding: 1rem; background: #27272a; border-radius: 8px; }
+    #camera-wrap {
+      margin-bottom: 1.5rem;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #18181b;
+    }
+    #video-preview {
+      width: 100%;
+      max-width: 480px;
+      height: auto;
+      max-height: 360px;
+      display: block;
+      border-radius: 12px;
+    }
+    .file-input-wrap { margin: 0.75rem 0; }
+    .file-input-wrap label { display: block; margin-bottom: 0.25rem; color: #a1a1aa; }
+    .loader-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin: 1rem 0;
+      color: #a1a1aa;
+    }
+    .loader-spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #3f3f46;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .ready-block { padding: 1rem; background: #27272a; border-radius: 8px; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>AI Screening Interview</h1>
+
+  <div id="camera-wrap" class="hidden">
+    <video id="video-preview" autoplay muted playsinline></video>
+  </div>
+
+  <div id="step-upload" class="step">
+    <p>Upload the job description and your resume (.docx) to prepare the interview.</p>
+    <div class="file-input-wrap">
+      <label for="input-jd">Job description (.docx)</label>
+      <input type="file" id="input-jd" accept=".docx" />
+    </div>
+    <div class="file-input-wrap">
+      <label for="input-resume">Resume (.docx)</label>
+      <input type="file" id="input-resume" accept=".docx" />
+    </div>
+    <button id="btn-prepare">Prepare interview</button>
+    <div id="loader-wrap" class="loader-wrap hidden">
+      <span class="loader-spinner"></span>
+      <span>Processing files and generating first question…</span>
+    </div>
+    <p id="upload-error" class="error hidden"></p>
+  </div>
+
+  <div id="step-ready" class="step hidden">
+    <div class="ready-block">
+      <p>Interview ready. Click Start interview to begin (camera and microphone will be requested next).</p>
+      <button id="btn-start-interview">Start interview</button>
+    </div>
+  </div>
+
+  <div id="step-permission" class="step hidden">
+    <p>Allow camera and microphone to record the interview.</p>
+    <button id="btn-request-media">Allow camera & microphone</button>
+    <p id="permission-status" class="permission-status"></p>
+    <p id="permission-error" class="error hidden"></p>
+    <button id="btn-continue-after-permission" class="hidden">Continue to interview</button>
+  </div>
+
+  <div id="step-conversation" class="step hidden">
+    <div id="conversation-layout" class="conversation-layout">
+    <div class="question-row">
+      <div id="bounce-wrap" class="bounce-wrap hidden">
+        <div class="bounce-ball"></div>
+      </div>
+      <div id="question-text" class="question-text"></div>
+    </div>
+    <div id="recording-ui">
+      <p id="recording-label" class="recording-indicator hidden">
+        <span class="recording-dot"></span>
+        <span>Recording your answer…</span>
+      </p>
+      <button id="btn-stop-submit">Stop & submit answer</button>
+    </div>
+    <p id="submit-error" class="error hidden"></p>
+    <p id="processing-msg" class="hidden">Processing your answer…</p>
+    </div>
+  </div>
+
+  <div id="step-finished" class="step hidden">
+    <div class="finish-block">
+      <p>Interview completed. Thank you!</p>
+      <button id="btn-finish-interview">End interview</button>
+    </div>
+    <p id="end-error" class="error hidden"></p>
+  </div>
+
+  <script>
+    const API_BASE = '';
+
+    let sessionId = null;
+    let fullStream = null;
+    let answerStream = null;
+    let audioContext = null;
+    let mixedDest = null;
+    let micSource = null;
+    let fullRecorder = null;
+    let fullChunks = [];
+    let answerRecorder = null;
+    let answerChunks = [];
+    let streamInterval = null;
+    let currentAudioUrl = null;
+    let vadContext = null;
+    let vadInterval = null;
+    let vadSilenceStart = null;
+    let vadHasSpoken = false;
+
+    const stepUpload = document.getElementById('step-upload');
+    const stepReady = document.getElementById('step-ready');
+    const stepPermission = document.getElementById('step-permission');
+    const stepConversation = document.getElementById('step-conversation');
+    const stepFinished = document.getElementById('step-finished');
+    const inputJd = document.getElementById('input-jd');
+    const inputResume = document.getElementById('input-resume');
+    const btnPrepare = document.getElementById('btn-prepare');
+    const loaderWrap = document.getElementById('loader-wrap');
+    const uploadError = document.getElementById('upload-error');
+    const btnStartInterview = document.getElementById('btn-start-interview');
+    const btnRequestMedia = document.getElementById('btn-request-media');
+    const permissionStatus = document.getElementById('permission-status');
+    const permissionError = document.getElementById('permission-error');
+    const cameraWrap = document.getElementById('camera-wrap');
+    const videoPreview = document.getElementById('video-preview');
+    const btnContinue = document.getElementById('btn-continue-after-permission');
+    const bounceWrap = document.getElementById('bounce-wrap');
+    const questionTextEl = document.getElementById('question-text');
+    const recordingLabel = document.getElementById('recording-label');
+    const btnStopSubmit = document.getElementById('btn-stop-submit');
+    const submitError = document.getElementById('submit-error');
+    const processingMsg = document.getElementById('processing-msg');
+    const btnFinishInterview = document.getElementById('btn-finish-interview');
+    const endError = document.getElementById('end-error');
+
+    function show(el) { el.classList.remove('hidden'); }
+    function hide(el) { el.classList.add('hidden'); }
+    function setError(el, msg) {
+      el.textContent = msg || '';
+      el.classList.toggle('hidden', !msg);
+    }
+
+    async function prepareSession(jdFile, resumeFile) {
+      const form = new FormData();
+      form.append('job_description', jdFile);
+      form.append('resume', resumeFile);
+      const res = await fetch(API_BASE + '/api/sessions', {
+        method: 'POST',
+        body: form,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function startFullRecording(stream) {
+      fullChunks = [];
+      const opts = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 2500000, audioBitsPerSecond: 128000 };
+      try {
+        fullRecorder = new MediaRecorder(stream, opts);
+      } catch (e) {
+        fullRecorder = new MediaRecorder(stream);
+      }
+      fullRecorder.ondataavailable = (e) => { if (e.data.size > 0) fullChunks.push(e.data); };
+      fullRecorder.start(2000);
+    }
+
+    const VAD_SILENCE_THRESHOLD = 0.015;
+    const VAD_SILENCE_MS = 1800;
+    const VAD_CHECK_MS = 150;
+
+    function startVAD(stream, onEndOfSpeech) {
+      stopVAD();
+      try {
+        vadContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = vadContext.createMediaStreamSource(stream);
+        const analyser = vadContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        vadHasSpoken = false;
+        vadSilenceStart = null;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        vadInterval = setInterval(() => {
+          if (!analyser) return;
+          analyser.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) sum += Math.abs(dataArray[i] - 128);
+          const level = sum / bufferLength / 128;
+          if (level > VAD_SILENCE_THRESHOLD) {
+            vadHasSpoken = true;
+            vadSilenceStart = null;
+          } else {
+            if (vadHasSpoken) {
+              if (vadSilenceStart == null) vadSilenceStart = Date.now();
+              if (Date.now() - vadSilenceStart >= VAD_SILENCE_MS) {
+                stopVAD();
+                onEndOfSpeech();
+              }
+            }
+          }
+        }, VAD_CHECK_MS);
+      } catch (e) { /* VAD optional */ }
+    }
+
+    function stopVAD() {
+      if (vadInterval) { clearInterval(vadInterval); vadInterval = null; }
+      if (vadContext && vadContext.state !== 'closed') {
+        vadContext.close().catch(function() {});
+        vadContext = null;
+      }
+      vadSilenceStart = null;
+      vadHasSpoken = false;
+    }
+
+    function startAnswerRecording() {
+      if (!answerStream) return;
+      answerChunks = [];
+      const opts = { mimeType: 'audio/webm', audioBitsPerSecond: 128000 };
+      try {
+        answerRecorder = new MediaRecorder(answerStream, opts);
+      } catch (e) {
+        answerRecorder = new MediaRecorder(answerStream);
+      }
+      answerRecorder.ondataavailable = (e) => { if (e.data.size > 0) answerChunks.push(e.data); };
+      answerRecorder.onstop = () => {
+        stopVAD();
+        hide(recordingLabel);
+        setTimeout(() => {
+          const blob = new Blob(answerChunks, { type: answerRecorder.mimeType });
+          if (blob.size === 0) {
+            setError(submitError, 'No audio recorded. Try again.');
+            btnStopSubmit.disabled = false;
+            return;
+          }
+          submitAnswerAudio(blob);
+        }, 0);
+      };
+      answerRecorder.start(500);
+      show(recordingLabel);
+      startVAD(answerStream, function() { stopAnswerRecording(); });
+    }
+
+    function stopAnswerRecording() {
+      stopVAD();
+      if (answerRecorder && answerRecorder.state === 'recording') {
+        answerRecorder.stop();
+      }
+    }
+
+    function streamQuestionText(el, text, onDone) {
+      let i = 0;
+      el.innerHTML = '';
+      if (streamInterval) clearInterval(streamInterval);
+      streamInterval = setInterval(() => {
+        if (i <= text.length) {
+          el.innerHTML = text.slice(0, i) + '<span class="stream-cursor">|</span>';
+          i++;
+        } else {
+          clearInterval(streamInterval);
+          streamInterval = null;
+          el.textContent = text;
+          if (onDone) onDone();
+        }
+      }, 25);
+    }
+
+    async function playQuestionAudio(url, onEnded) {
+      currentAudioUrl = url;
+      if (!audioContext || !mixedDest) {
+        const audio = new Audio(url);
+        audio.onended = () => { currentAudioUrl = null; if (onEnded) onEnded(); };
+        audio.onerror = () => { if (onEnded) onEnded(); };
+        audio.play().catch(() => { if (onEnded) onEnded(); });
+        return;
+      }
+      try {
+        const res = await fetch(url);
+        const arrayBuffer = await res.arrayBuffer();
+        const buffer = await audioContext.decodeAudioData(arrayBuffer);
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(mixedDest);
+        source.connect(audioContext.destination);
+        source.onended = () => {
+          currentAudioUrl = null;
+          if (onEnded) onEnded();
+        };
+        source.start(0);
+      } catch (e) {
+        currentAudioUrl = null;
+        var fallback = new Audio(url);
+        fallback.onended = function() { if (onEnded) onEnded(); };
+        fallback.onerror = function() { if (onEnded) onEnded(); };
+        fallback.play().catch(function() { if (onEnded) onEnded(); });
+      }
+    }
+
+    function showQuestion(question, audioUrl) {
+      show(bounceWrap);
+      questionTextEl.textContent = '';
+      streamQuestionText(questionTextEl, question, () => {
+        if (streamInterval) clearInterval(streamInterval);
+        questionTextEl.textContent = question;
+      });
+      if (audioUrl) {
+        playQuestionAudio(audioUrl, () => {
+          hide(bounceWrap);
+          startAnswerRecording();
+        });
+      } else {
+        hide(bounceWrap);
+        startAnswerRecording();
+      }
+    }
+
+    async function submitAnswerAudio(blob) {
+      setError(submitError, '');
+      show(processingMsg);
+      btnStopSubmit.disabled = true;
+      try {
+        const form = new FormData();
+        form.append('audio', blob, 'answer.webm');
+        const res = await fetch(API_BASE + `/api/sessions/${sessionId}/turns/complete-with-audio`, {
+          method: 'POST',
+          body: form,
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (data.finished) {
+          hide(stepConversation);
+          show(stepFinished);
+        } else {
+          showQuestion(data.question || '', data.audio_url || '');
+        }
+      } catch (e) {
+        setError(submitError, e.message);
+      } finally {
+        hide(processingMsg);
+        btnStopSubmit.disabled = false;
+      }
+    }
+
+    async function endInterview() {
+      setError(endError, '');
+      if (fullRecorder && fullRecorder.state === 'recording') {
+        fullRecorder.stop();
+      }
+      fullRecorder = null;
+      if (answerStream) {
+        answerStream.getTracks().forEach(function(t) { t.stop(); });
+        answerStream = null;
+      }
+      if (audioContext && audioContext.state !== 'closed') {
+        audioContext.close();
+      }
+      audioContext = null;
+      mixedDest = null;
+      micSource = null;
+      const blob = fullChunks.length ? new Blob(fullChunks, { type: 'video/webm' }) : null;
+      if (!blob || blob.size === 0) {
+        setError(endError, 'No recording to upload.');
+        return;
+      }
+      try {
+        const urlRes = await fetch(API_BASE + `/api/sessions/${sessionId}/video/upload-url`, { method: 'POST' });
+        if (!urlRes.ok) throw new Error(await urlRes.text());
+        const { upload_url, blob_path } = await urlRes.json();
+        await fetch(upload_url, { method: 'PUT', body: blob, headers: { 'x-ms-blob-type': 'BlockBlob' } });
+        const finalRes = await fetch(API_BASE + `/api/sessions/${sessionId}/video/finalize`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ blob_path }),
+        });
+        if (!finalRes.ok) throw new Error(await finalRes.text());
+        window.location.reload();
+      } catch (e) {
+        setError(endError, e.message);
+      }
+    }
+
+    btnPrepare.addEventListener('click', async () => {
+      setError(uploadError, '');
+      const jdFile = inputJd.files && inputJd.files[0];
+      const resumeFile = inputResume.files && inputResume.files[0];
+      if (!jdFile || !resumeFile) {
+        setError(uploadError, 'Please select both job description and resume (.docx) files.');
+        return;
+      }
+      if (!jdFile.name.toLowerCase().endsWith('.docx') || !resumeFile.name.toLowerCase().endsWith('.docx')) {
+        setError(uploadError, 'Both files must be .docx');
+        return;
+      }
+      show(loaderWrap);
+      btnPrepare.disabled = true;
+      try {
+        const data = await prepareSession(jdFile, resumeFile);
+        sessionId = data.session_id;
+        window.__firstQuestion = data.question;
+        window.__firstAudioUrl = data.audio_url;
+        hide(stepUpload);
+        hide(loaderWrap);
+        show(stepReady);
+      } catch (e) {
+        hide(loaderWrap);
+        setError(uploadError, e.message || 'Failed to process files.');
+      } finally {
+        btnPrepare.disabled = false;
+      }
+    });
+
+    btnStartInterview.addEventListener('click', () => {
+      hide(stepReady);
+      show(stepPermission);
+    });
+
+    btnRequestMedia.addEventListener('click', async () => {
+      setError(permissionError, '');
+      try {
+        fullStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        permissionStatus.textContent = 'Camera and microphone allowed.';
+        videoPreview.srcObject = fullStream;
+        show(cameraWrap);
+        show(btnContinue);
+      } catch (e) {
+        setError(permissionError, e.message || 'Permission denied');
+      }
+    });
+
+    btnContinue.addEventListener('click', async () => {
+      try {
+        answerStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        setError(permissionError, e.message || 'Could not get microphone for answers.');
+        return;
+      }
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      mixedDest = audioContext.createMediaStreamDestination();
+      micSource = audioContext.createMediaStreamSource(fullStream);
+      micSource.connect(mixedDest);
+      const videoTrack = fullStream.getVideoTracks()[0];
+      const mixedAudioTrack = mixedDest.stream.getAudioTracks()[0];
+      const combinedStream = new MediaStream([videoTrack, mixedAudioTrack]);
+      startFullRecording(combinedStream);
+      hide(stepPermission);
+      show(stepConversation);
+      showQuestion(window.__firstQuestion || '', window.__firstAudioUrl || '');
+    });
+
+    btnStopSubmit.addEventListener('click', () => {
+      stopAnswerRecording();
+    });
+
+    btnFinishInterview.addEventListener('click', endInterview);
+  </script>
+</body>
+</html>

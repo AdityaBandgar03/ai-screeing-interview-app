@@ -1,0 +1,11 @@
+murf
+pymysql
+python-dotenv
+fastapi
+uvicorn
+sqlalchemy
+openai
+azure-storage-blob
+requests
+python-multipart
+python-docx
